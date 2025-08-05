@@ -347,7 +347,7 @@ jobs:
     environment:
       LANG: en_US.UTF-8
       JAVA_HOME: /Users/distiller/jdk/Contents/Home
-    resource_class: macos.m1.large.gen1
+    resource_class: m2pro.large
     macos:
       xcode: 15.3.0
   pkl-doc-linux-amd64-release:
@@ -455,7 +455,7 @@ jobs:
     environment:
       LANG: en_US.UTF-8
       JAVA_HOME: /Users/distiller/jdk/Contents/Home
-    resource_class: macos.m1.large.gen1
+    resource_class: m2pro.large
     macos:
       xcode: 15.3.0
   pkl-doc-linux-aarch64-release:
@@ -973,7 +973,7 @@ jobs:
     environment:
       LANG: en_US.UTF-8
       JAVA_HOME: /Users/distiller/jdk/Contents/Home
-    resource_class: macos.m1.large.gen1
+    resource_class: m2pro.large
     macos:
       xcode: 15.3.0
   pkl-doc-linux-amd64-snapshot:
@@ -1081,7 +1081,7 @@ jobs:
     environment:
       LANG: en_US.UTF-8
       JAVA_HOME: /Users/distiller/jdk/Contents/Home
-    resource_class: macos.m1.large.gen1
+    resource_class: m2pro.large
     macos:
       xcode: 15.3.0
   pkl-doc-linux-aarch64-snapshot:
@@ -1293,6 +1293,46 @@ jobs:
     resource_class: windows.large
     machine:
       image: windows-server-2022-gui:current
+  docker-build-snapshot:
+    steps:
+    - checkout
+    - run:
+        command: docker buildx create --use --driver docker-container
+        name: Setup Docker Buildx
+    - run:
+        command: docker buildx build --platform linux/amd64,linux/arm64 --tag ghcr.io/ikukharchuk/pkl:snapshot-snapshot --load .
+        name: Build Docker image
+    - run:
+        command: |-
+          echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag ghcr.io/ikukharchuk/pkl:snapshot-snapshot \
+            --push \
+            .
+        name: Push Docker image
+    docker:
+    - image: cimg/base:current
+  docker-build-release:
+    steps:
+    - checkout
+    - run:
+        command: docker buildx create --use --driver docker-container
+        name: Setup Docker Buildx
+    - run:
+        command: docker buildx build --platform linux/amd64,linux/arm64 --tag ghcr.io/ikukharchuk/pkl:latest --load .
+        name: Build Docker image
+    - run:
+        command: |-
+          echo $GITHUB_TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag ghcr.io/ikukharchuk/pkl:latest \
+            --push \
+            .
+        name: Push Docker image
+    docker:
+    - image: cimg/base:current
   bench:
     steps:
     - checkout
@@ -1439,6 +1479,7 @@ workflows:
     - pkl-doc-linux-aarch64-snapshot
     - pkl-doc-linux-alpine-amd64-snapshot
     - pkl-doc-windows-amd64-snapshot
+    - docker-build-snapshot
     - deploy-snapshot:
         requires:
         - gradle-check
@@ -1457,6 +1498,7 @@ workflows:
         - pkl-doc-linux-aarch64-snapshot
         - pkl-doc-linux-alpine-amd64-snapshot
         - pkl-doc-windows-amd64-snapshot
+        - docker-build-snapshot
         context: pkl-maven-release
     - trigger-docsite-build:
         requires:
@@ -1565,6 +1607,12 @@ workflows:
             ignore: /.*/
           tags:
             only: /^v?\d+\.\d+\.\d+$/
+    - docker-build-release:
+        filters:
+          branches:
+            ignore: /.*/
+          tags:
+            only: /^v?\d+\.\d+\.\d+$/
     - github-release:
         requires:
         - gradle-check
@@ -1583,6 +1631,7 @@ workflows:
         - pkl-doc-linux-aarch64-release
         - pkl-doc-linux-alpine-amd64-release
         - pkl-doc-windows-amd64-release
+        - docker-build-release
         context: pkl-github-release
         filters:
           branches:
@@ -1626,6 +1675,7 @@ workflows:
     - pkl-doc-linux-aarch64-release
     - pkl-doc-linux-alpine-amd64-release
     - pkl-doc-windows-amd64-release
+    - docker-build-release
     when:
       matches:
         value: << pipeline.git.branch >>

@@ -1,0 +1,70 @@
+//===----------------------------------------------------------------------===//
+// Copyright © 2024 Apple Inc. and the Pkl project authors. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===----------------------------------------------------------------------===//
+import "package://pkg.pkl-lang.org/pkl-pantry/com.circleci.v2@1.5.0#/Config.pkl"
+
+/// Docker image tag to use
+tag: String = "latest"
+
+/// Whether this is a release build or not.
+isRelease: Boolean = false
+
+/// Docker registry to push to (optional)
+registry: String?
+
+/// Docker repository name
+repository: String = "pkl"
+
+job: Config.Job = new {
+  docker {
+    new {
+      image = "cimg/base:current"
+    }
+  }
+  steps {
+    "checkout"
+    new Config.RunStep {
+      name = "Setup Docker Buildx"
+      command = """
+        docker buildx create --use --driver docker-container
+        """
+    }
+    new Config.RunStep {
+      name = "Build Docker image"
+      command = 
+        let (imageTag = if (module.isRelease) module.tag else "snapshot-\(module.tag)")
+        let (fullImageName = if (module.registry != null) "\(module.registry)/\(module.repository):\(imageTag)" else "\(module.repository):\(imageTag)")
+        """
+        docker buildx build --platform linux/amd64,linux/arm64 --tag \(fullImageName) --load .
+        """
+    }
+    when (module.registry != null) {
+      new Config.RunStep {
+        name = "Push Docker image"
+        command =
+          let (imageTag = if (module.isRelease) module.tag else "snapshot-\(module.tag)")
+          let (fullImageName = if (module.registry != null) "\(module.registry)/\(module.repository):\(imageTag)" else "\(module.repository):\(imageTag)")
+          """
+          echo $GITHUB_TOKEN | docker login \(module.registry) -u $GITHUB_ACTOR --password-stdin
+          docker buildx build \\
+            --platform linux/amd64,linux/arm64 \\
+            --tag \(fullImageName) \\
+            --push \\
+            .
+          """
+      }
+    }
+  }
+}
